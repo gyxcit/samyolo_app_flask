@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labélisation d'Images avec SAM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        /* General Styles */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+
+        header {
+            background-color: #4CAF50;
+            padding: 15px 0;
+            text-align: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        section {
+            margin: 20px auto;
+            max-width: 1200px;
+            padding: 20px;
+            background: white;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        .upload-section {
+            text-align: center;
+        }
+
+        .upload-section input[type="file"] {
+            margin: 10px 0;
+        }
+
+        .image-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .image-item {
+            width: 150px;
+            height: 150px;
+            overflow: hidden;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #fff;
+        }
+
+        .image-item:hover {
+            border-color: #4CAF50;
+            transform: scale(1.05);
+        }
+
+        .image-item img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+        }
+
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin: 20px auto;
+            display: block;
+        }
+
+        .class-management {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .class-management input[type="text"] {
+            padding: 8px;
+            font-size: 16px;
+            width: 300px;
+            margin-right: 10px;
+        }
+
+        .class-list {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            list-style: none;
+            padding: 0;
+        }
+
+        .class-item {
+            padding: 5px 15px;
+            border-radius: 20px;
+            background-color: #f4f4f4;
+            border: 1px solid #ccc;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .class-item:hover {
+            background-color: #ddd;
+        }
+
+        .class-item.active {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #45a049;
+        }
+
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            margin: 0 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .result-section img {
+            max-width: 100%;
+            margin: 20px auto;
+            display: block;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header>Labélisation d'Images avec SAM</header>
+
+    <!-- Section 1: Téléchargement d'images -->
+    <section class="upload-section">
+        <h2>Télécharger vos images</h2>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" id="image" name="images" accept="image/*" multiple required>
+            <br>
+            <button type="submit">Télécharger</button>
+        </form>
+    </section>
+
+    {% if uploaded_images %}
+    <!-- Section 2: Galerie des images téléchargées -->
+    <section>
+        <h2>Images téléchargées</h2>
+        <div class="image-container">
+            {% for image in uploaded_images %}
+            <div class="image-item" onclick="loadImage('{{ image }}')">
+                <img src="{{ url_for('static', filename='uploads/' + image) }}" alt="{{ image }}">
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Section 3: Zone de travail -->
+    <section>
+        <canvas id="image-canvas"></canvas>
+    </section>
+
+    <!-- Section 4: Gestion des classes -->
+    <section class="class-management">
+        <h3>Ajouter une classe</h3>
+        <input type="text" id="class-name" placeholder="Nom de la classe">
+        <button id="add-class">Ajouter</button>
+        <ul id="class-list" class="class-list"></ul>
+    </section>
+
+    <!-- Section 5: Contrôles -->
+    <section class="controls">
+        <button id="finish-button" disabled>Terminer l'annotation</button>
+        <button id="segment-button" disabled>Lancer la segmentation</button>
+    </section>
+    {% endif %}
+
+    <script>
+        let selectedImage = null; // Image actuellement sélectionnée
+        let annotations = {}; // Stocke les annotations de chaque image (clé : image, valeur : points)
+        let currentClass = null; // Classe actuellement sélectionnée
+        const finishButton = document.getElementById('finish-button');
+        const segmentButton = document.getElementById('segment-button');
+
+        function loadImage(imageName) {
+            if (!imageName) {
+                alert("Veuillez sélectionner une image !");
+                return;
+            }
+
+            selectedImage = imageName; // Stockez le nom de l'image sélectionnée
+            console.log("Image sélectionnée :", selectedImage);
+
+            // Initialiser les annotations pour cette image si elles n'existent pas
+            if (!annotations[selectedImage]) {
+                annotations[selectedImage] = [];
+            }
+
+            const img = new Image();
+            img.src = `/static/uploads/${imageName}`;
+            img.onload = () => {
+                const canvas = document.getElementById('image-canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+
+                // Dessiner les points existants pour cette image
+                annotations[selectedImage].forEach(point => {
+                    drawPoint(ctx, point.x, point.y, point.class);
+                });
+            };
+
+            finishButton.disabled = false;
+        }
+
+        function drawPoint(ctx, x, y, pointClass) {
+            ctx.fillStyle = pointClass === 'arbre' ? 'green' : 'red';
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        document.getElementById('add-class').addEventListener('click', () => {
+            const className = document.getElementById('class-name').value.trim();
+            if (!className) {
+                alert("Veuillez entrer un nom de classe !");
+                return;
+            }
+            const li = document.createElement('li');
+            li.textContent = className;
+            li.classList.add('class-item');
+            li.onclick = () => {
+                document.querySelectorAll('.class-item').forEach(item => item.classList.remove('active'));
+                li.classList.add('active');
+                currentClass = className;
+                console.log("Classe sélectionnée :", currentClass);
+            };
+            document.getElementById('class-list').appendChild(li);
+            document.getElementById('class-name').value = '';
+        });
+
+        const canvas = document.getElementById('image-canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.addEventListener('click', (event) => {
+            if (!currentClass) {
+                alert("Veuillez sélectionner une classe avant d'ajouter des points !");
+                return;
+            }
+
+            if (!selectedImage) {
+                alert("Veuillez sélectionner une image avant d'ajouter des points !");
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            const newPoint = { x, y, class: currentClass };
+            annotations[selectedImage].push(newPoint);
+            console.log(`Point ajouté pour ${selectedImage}:`, newPoint);
+
+            drawPoint(ctx, x, y, currentClass);
+        });
+
+        finishButton.addEventListener('click', () => {
+            if (!selectedImage) {
+                alert("Veuillez sélectionner une image !");
+                return;
+            }
+
+            console.log(`Annotation terminée pour ${selectedImage}.`);
+            alert(`Annotation pour ${selectedImage} terminée !`);
+
+            finishButton.disabled = true;
+
+            // Vérifiez si toutes les annotations sont terminées
+            if (Object.keys(annotations).length > 0) {
+                segmentButton.disabled = false;
+            }
+        });
+
+        segmentButton.addEventListener('click', () => {
+            const dataToSend = Object.keys(annotations).map(imageName => ({
+                image_name: imageName,
+                points: annotations[imageName]
+            }));
+
+            console.log("Données envoyées :", dataToSend);
+
+            fetch('/segment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataToSend)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Réponse du backend :", data);
+                if (data.success) {
+                    alert("Segmentation réussie !");
+                } else {
+                    alert("Erreur : " + data.error);
+                }
+            })
+            .catch(err => console.error('Erreur lors de la segmentation :', err));
+        });
+    </script>
+</body>
+</html>

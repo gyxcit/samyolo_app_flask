@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labélisation d'Images avec SAM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <h1>Labélisation d'Images avec SAM</h1>
+
+    <!-- Formulaire pour télécharger une image -->
+    <form method="post" enctype="multipart/form-data">
+        <label for="image">Télécharger une image :</label>
+        <input type="file" id="image" name="image" accept="image/*" required>
+        <button type="submit">Télécharger</button>
+    </form>
+
+    <!-- Prévisualisation de l'image sélectionnée -->
+    <h2>Prévisualisation :</h2>
+    <img id="preview" src="#" alt="Prévisualisation de l'image" style="max-width: 100%; display: none; border: 1px solid #ddd;">
+
+    <!-- JavaScript pour afficher la prévisualisation -->
+    <script>
+        // Récupérer l'élément <input> pour l'image et la balise <img> pour la prévisualisation
+        const imageInput = document.getElementById('image');
+        const preview = document.getElementById('preview');
+
+        // Écouteur pour détecter les changements dans l'input
+        imageInput.addEventListener('change', function(event) {
+            const file = event.target.files[0]; // Récupérer le fichier sélectionné
+            if (file) {
+                const reader = new FileReader(); // Créer un FileReader pour lire le fichier
+                reader.onload = function(e) {
+                    preview.src = e.target.result; // Mettre à jour la source de l'image
+                    preview.style.display = 'block'; // Afficher l'image
+                };
+                reader.readAsDataURL(file); // Lire le fichier comme une URL de données
+            } else {
+                preview.src = '#'; // Réinitialiser si aucun fichier n'est sélectionné
+                preview.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labélisation d'Images avec SAM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #fff;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            display: block;
+            margin: 20px auto;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .upload-section {
+            text-align: center;
+        }
+
+        .class-management {
+            text-align: center;
+        }
+
+        .class-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            list-style: none;
+            padding: 0;
+        }
+
+        .class-item {
+            padding: 5px 10px;
+            border-radius: 5px;
+            background-color: #f4f4f4;
+            border: 1px solid #ccc;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .class-item:hover {
+            background-color: #ddd;
+        }
+
+        .class-item.active {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #45a049;
+        }
+
+        #annotated-image {
+            display: block;
+            max-width: 100%;
+            margin: 20px auto;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .status.success {
+            color: #4CAF50;
+        }
+
+        .status.error {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>Labélisation d'Images avec SAM</h1>
+
+    <!-- Section 1: Upload Image -->
+    <section class="upload-section">
+        <form method="post" enctype="multipart/form-data">
+            <label for="image">Télécharger une image :</label><br>
+            <input type="file" id="image" name="image" accept="image/*" required>
+            <br>
+            <button type="submit">Télécharger</button>
+        </form>
+    </section>
+
+    {% if uploaded_image %}
+    <!-- Section 2: Canvas for Image -->
+    <section>
+        <canvas id="image-canvas"></canvas>
+    </section>
+
+    <!-- Section 3: Annotated Image -->
+    <section>
+        <h2>Image Annotée</h2>
+        <img id="annotated-image" style="display: none;" alt="Image Annotée">
+    </section>
+
+    <!-- Section 4: Manage Classes -->
+    <section class="class-management">
+        <h3>Ajouter une classe :</h3>
+        <input type="text" id="class-name" placeholder="Entrez une classe">
+        <button id="add-class">Ajouter</button>
+        <h4>Classes disponibles :</h4>
+        <ul id="class-list" class="class-list"></ul>
+    </section>
+
+    <!-- Section 5: Controls -->
+    <section>
+        <div class="controls">
+            <button id="segment-button" disabled>Lancer la Segmentation</button>
+        </div>
+    </section>
+    {% endif %}
+
+    <script>
+        let canvas = document.getElementById('image-canvas');
+        let ctx = canvas ? canvas.getContext('2d') : null;
+        let points = [];
+        let currentClass = null;
+
+        {% if uploaded_image %}
+        // Charger l'image téléchargée
+        const img = new Image();
+        img.src = "{{ url_for('static', filename='uploads/' + uploaded_image) }}";
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+        };
+
+        // Gestion des classes
+        document.getElementById('add-class').addEventListener('click', () => {
+            const className = document.getElementById('class-name').value.trim();
+            if (!className) return;
+
+            const li = document.createElement('li');
+            li.textContent = className;
+            li.classList.add('class-item');
+            li.onclick = () => {
+                // Marquer la classe comme sélectionnée
+                document.querySelectorAll('.class-item').forEach(item => item.classList.remove('active'));
+                li.classList.add('active');
+                currentClass = className;
+            };
+
+            document.getElementById('class-list').appendChild(li);
+            document.getElementById('class-name').value = '';
+        });
+
+        // Ajouter un point sur le canvas
+        canvas.addEventListener('click', event => {
+            if (!currentClass) {
+                alert('Veuillez sélectionner une classe.');
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            points.push({ x, y, class: currentClass });
+
+            // Dessiner le point sur le canvas
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Activer le bouton Segmentation
+            document.getElementById('segment-button').disabled = points.length === 0;
+        });
+
+        // Lancer la segmentation
+        document.getElementById('segment-button').addEventListener('click', () => {
+            const status = document.createElement('div');
+            status.className = 'status';
+            document.body.appendChild(status);
+
+            fetch('/segment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image_name: "{{ uploaded_image }}",
+                    points: points
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    status.textContent = 'Segmentation terminée !';
+                    status.classList.add('success');
+                    const annotatedImg = document.getElementById('annotated-image');
+                    annotatedImg.src = "{{ url_for('static', filename='') }}" + data.annotated_image;
+                    annotatedImg.style.display = 'block';
+                } else {
+                    status.textContent = 'Erreur : ' + data.error;
+                    status.classList.add('error');
+                }
+            })
+            .catch(err => {
+                status.textContent = 'Erreur de réseau.';
+                status.classList.add('error');
+                console.error('Erreur:', err);
+            });
+        });
+        {% endif %}
+    </script>
+</body>
+</html>
