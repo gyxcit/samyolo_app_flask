@@ -13,7 +13,7 @@ from yolov5.train import main, parse_opt  # Importation directe des fonctions n√
 
 # D√©finir les chemins et options
 MODEL_PATH = BASE_DIR / "models/models--keizer77--samyolo2/snapshots/74c8cb12ae448ff0b8bae9ef522b54ec09b47c20/best.pt"
-DATA_YAML_PATH = BASE_DIR / "labelid_image/data.yaml"
+DATA_YAML_PATH = BASE_DIR / "labelid_image/data.yaml"      #         
 OUTPUT_DIR = BASE_DIR / "weights"
 
 def clear_cache(data_path):
